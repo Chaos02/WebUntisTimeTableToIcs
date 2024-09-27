@@ -6,7 +6,7 @@ param (
     [Alias("Date")]
     [ValidateScript({
         if ($_.GetType().Name -eq 'String') {
-            [datetime]::TryParse($_, [ref] $null) -or
+            [datetime]::TryParse($_, [ref] $null) -or `
             throw "Invalid date format. Please provide a valid date string."
         } elseif ($_.GetType().Name -ne 'DateTime') {
             throw "Invalid date format. Provide a date string or DateTime object."
