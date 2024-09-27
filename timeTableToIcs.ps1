@@ -84,7 +84,7 @@ $rooms = [System.Collections.Generic.List[Room]]::new()
 
 foreach ($date in $dates) {
 
-Write-Host "Getting Data for week of ${$date.ToString("yyyy-mm-dd")}
+Write-Host "Getting Data for week of ${$date.ToString("yyyy-mm-dd")}"
 
 $url = "https://$baseUrl/WebUntis/api/public/timetable/weekly/data?elementType=$elementType&elementId=$elementId&date=$($date.ToString("yyyy-MM-dd"))&formatId=14"
 
