@@ -143,8 +143,8 @@ $properties = $calendarEntries | Get-Member -MemberType Properties | Where-Objec
 
 # Use Select-Object to reorder properties and add calculated properties
 $calendarEntries | Select-Object (@(
-    @{ Name = 'StartTimeF'; Expression = { [DateTime]::ParseExact($_.StartTime, "yyyyMMddTHHmmssZ", $null).ToString("dd.MM.yy HH:mm") } },
-    @{ Name = 'EndTimeF'; Expression = { [DateTime]::ParseExact($_.EndTime, "yyyyMMddTHHmmssZ", $null).ToString("dd.MM.yy HH:mm") } }
+    @{ Name = 'StartTimeF'; Expression = { [DateTime]::ParseExact($_.StartTime, "yyyyMMddTHHmmss", $null).ToString("dd.MM.yy HH:mm") } },
+    @{ Name = 'EndTimeF'; Expression = { [DateTime]::ParseExact($_.EndTime, "yyyyMMddTHHmmss", $null).ToString("dd.MM.yy HH:mm") } }
 ) + $properties + @{ 
         Name = 'DescriptionF'; 
         Expression = { 
