@@ -2,11 +2,55 @@ param (
     [string]$baseUrl,
     [int]$elementType = 1,
     [int]$elementId,
-    [string]$date = (Get-Date -Format "yyyy-MM-dd"),
+    [Parameter(Mandatory = $false)]
+    [Alias("Date")] # Optional alias
+    [ValidateScript({
+        # Try to parse each item if it's not already a DateTime object
+        if ($_.GetType().Name -eq 'String') {
+            [datetime]::TryParse($_)
+        } elseif ($_.GetType().Name -ne 'DateTime') {
+            throw "Invalid date format. Please provide a valid date string or DateTime object."
+        } else {
+            $true
+        }
+    })]
+    [System.Object[]]$dates = (Get-Date),
     [string]$OutputFilePath = "calendar.ics",
     [string]$cookie,
     [string]$tenantId
 )
+
+
+# Convert any string inputs to DateTime objects
+$dates = $dates | ForEach-Object {
+    if ($_ -is [string]) {
+        [datetime]::ParseExact($_)
+    } else {
+        $_
+    }
+}
+
+function Get-SingleElement {
+    param (
+        [Parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
+        [System.Object[]]$collection
+    )
+
+    process {
+        $elements = @()
+        foreach ($item in $collection) {
+            $elements += $item
+        }
+
+        if ($elements.Count -eq 0) {
+            throw [System.InvalidOperationException]::new("No elements match the predicate. Call stack: $((Get-PSCallStack | Out-String).Trim())")
+        } elseif ($elements.Count -gt 1) {
+            throw [System.InvalidOperationException]::new("More than one element matches the predicate. Call stack: $((Get-PSCallStack | Out-String).Trim())")
+        }
+
+        return $elements[0]
+    }
+}
 
 $headers = @{
     "authority"="$baseUrl"
@@ -38,38 +82,19 @@ $session.Cookies.Add((New-Object System.Net.Cookie("Tenant-Id", "`"$tenantId`"",
 $session.Cookies.Add((New-Object System.Net.Cookie("traceId", "9de4710537aa097594b039ee3a591cfc22a6dd99", "/", "$baseUrl")))
 $session.Cookies.Add((New-Object System.Net.Cookie("JSESSIONID", "B9ED9B2D36BE7D25A7A9EF21E8144D3F", "/", "$baseUrl")))
 
-$url = "https://$baseUrl/WebUntis/api/public/timetable/weekly/data?elementType=$elementType&elementId=$elementId&date=$date&formatId=14"
-
-$response = Invoke-WebRequest -UseBasicParsing -Uri $url -Method Get -WebSession $session -Headers $headers
-$object = $response | ConvertFrom-Json -ErrorAction Stop
-
 $periods = [System.Collections.Generic.List[PeriodEntry]]::new()
 
 $courses = [System.Collections.Generic.List[Course]]::new()
 $rooms = [System.Collections.Generic.List[Room]]::new()
+
+for each ($date in $dates) {
+
+$url = "https://$baseUrl/WebUntis/api/public/timetable/weekly/data?elementType=$elementType&elementId=$elementId&date=$($date.ToString("yyyy-MM-dd"))&formatId=14"
+
+$response = Invoke-WebRequest -UseBasicParsing -Uri $url -Method Get -WebSession $session -Headers $headers
+$object = $response | ConvertFrom-Json -ErrorAction Stop
+
 $class = [PeriodTableEntry]
-
-function Get-SingleElement {
-    param (
-        [Parameter(ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)]
-        [System.Object[]]$collection
-    )
-
-    process {
-        $elements = @()
-        foreach ($item in $collection) {
-            $elements += $item
-        }
-
-        if ($elements.Count -eq 0) {
-            throw [System.InvalidOperationException]::new("No elements match the predicate. Call stack: $((Get-PSCallStack | Out-String).Trim())")
-        } elseif ($elements.Count -gt 1) {
-            throw [System.InvalidOperationException]::new("More than one element matches the predicate. Call stack: $((Get-PSCallStack | Out-String).Trim())")
-        }
-
-        return $elements[0]
-    }
-}
 
 try {
     $legende = [System.Collections.Generic.List[PeriodTableEntry]]::new();
@@ -103,6 +128,7 @@ try {
     exit 1
 }
 
+}
 
 $periods = $periods | Sort-Object -Property startTime
 
