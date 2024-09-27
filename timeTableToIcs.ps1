@@ -82,7 +82,7 @@ $periods = [System.Collections.Generic.List[PeriodEntry]]::new()
 $courses = [System.Collections.Generic.List[Course]]::new()
 $rooms = [System.Collections.Generic.List[Room]]::new()
 
-foreach ([DateTime]$date in $dates) {
+foreach ($date in $dates) {
 
 Write-Host "Getting Data for week of ${$date.ToString("yyyy-mm-dd")}
 
