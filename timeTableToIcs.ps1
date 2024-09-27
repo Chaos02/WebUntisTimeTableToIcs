@@ -183,8 +183,8 @@ class IcsEvent {
     [string]$Category
 
     IcsEvent([PeriodEntry]$period) {
-        $this.startTime = $period.startTime.ToString("yyyyMMddTHHmmssZ")
-        $this.endTime = $period.endTime.ToString("yyyyMMddTHHmmssZ")
+        $this.startTime = $period.startTime.ToString("yyyyMMddTHHmmss")
+        $this.endTime = $period.endTime.ToString("yyyyMMddTHHmmss")
         $this.location = $period.room.room.longName
         $this.summary = $period.course.course.longName
         $this.description = $period.substText
