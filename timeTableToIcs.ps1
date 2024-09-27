@@ -3,31 +3,26 @@ param (
     [int]$elementType = 1,
     [int]$elementId,
     [Parameter(Mandatory = $false)]
-    [Alias("Date")] # Optional alias
+    [Alias("Date")]
     [ValidateScript({
-        # Try to parse each item if it's not already a DateTime object
         if ($_.GetType().Name -eq 'String') {
-            [datetime]::TryParse($_)
+            [datetime]::TryParse($_, [ref] $null) -or
+            throw "Invalid date format. Please provide a valid date string."
         } elseif ($_.GetType().Name -ne 'DateTime') {
-            throw "Invalid date format. Please provide a valid date string or DateTime object."
+            throw "Invalid date format. Provide a date string or DateTime object."
         } else {
             $true
         }
     })]
-    [System.Object[]]$dates = (Get-Date),
+    [System.Object[]]$dates = @( (-7..35 | ForEach-Object { (Get-Date).AddDays($_) })[0,7,14,21,28,35] ),
     [string]$OutputFilePath = "calendar.ics",
     [string]$cookie,
     [string]$tenantId
 )
 
-
 # Convert any string inputs to DateTime objects
 $dates = $dates | ForEach-Object {
-    if ($_ -is [string]) {
-        [datetime]::ParseExact($_)
-    } else {
-        $_
-    }
+    if ($_ -is [string]) { [datetime]::Parse($_) } else { $_ }
 }
 
 function Get-SingleElement {
