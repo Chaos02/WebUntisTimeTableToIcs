@@ -82,7 +82,9 @@ $periods = [System.Collections.Generic.List[PeriodEntry]]::new()
 $courses = [System.Collections.Generic.List[Course]]::new()
 $rooms = [System.Collections.Generic.List[Room]]::new()
 
-foreach ($date in $dates) {
+foreach ([DateTime]$date in $dates) {
+
+Write-Host "Getting Data for week of ${$date.ToString("yyyy-mm-dd")}
 
 $url = "https://$baseUrl/WebUntis/api/public/timetable/weekly/data?elementType=$elementType&elementId=$elementId&date=$($date.ToString("yyyy-MM-dd"))&formatId=14"
 
