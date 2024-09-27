@@ -6,12 +6,13 @@ param (
     [Alias("Date")]
     [ValidateScript({
         if ($_.GetType().Name -eq 'String') {
-            [datetime]::TryParse($_, [ref] $null) -or throw "Invalid date format. Please provide a valid date string."
+            if (-not [datetime]::TryParse($_, [ref] $null)) {
+                throw "Invalid date format. Please provide a valid date string."
+            }
         } elseif ($_.GetType().Name -ne 'DateTime') {
             throw "Invalid date format. Provide a date string or DateTime object."
-        } else {
-            $true
         }
+        $true
     })]
     [System.Object[]]$dates = @( (-7..35 | ForEach-Object { (Get-Date).AddDays($_) })[0,7,14,21,28,35] ),
     [string]$OutputFilePath = "calendar.ics",
