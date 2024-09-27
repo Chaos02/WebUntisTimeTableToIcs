@@ -14,7 +14,7 @@ param (
         }
         $true
     })]
-    [System.Object[]]$dates = @( (-7..35 | ForEach-Object { (Get-Date).AddDays($_) })[0,7,14,21,28,35] ),
+    [System.Object[]]$dates = @( (-7..14 | ForEach-Object { (Get-Date).AddDays($_) })[0,7,14] ),
     [string]$OutputFilePath = "calendar.ics",
     [string]$cookie,
     [string]$tenantId
