@@ -79,21 +79,21 @@ param (
     [Alias('TimeTableID')]
     [int]$elementId,
     [Parameter(Mandatory = $false)]
-    [Alias('Date')]
+    [Alias('DateRange')]
     [ValidateScript({
-            if ($_.Count -gt 4) {
-                throw 'The maximum number of weeks is 4. (Limited by WebUntis API, max defined by admin)'
-            }
             if ($_.GetType().Name -eq 'String') {
                 if (-not [datetime]::TryParse($_, [ref] $null)) {
                     throw 'Invalid date format. Please provide a valid date string parse-able by `[datetime]::TryParse()`.'
                 }
             } elseif ($_.GetType().Name -ne 'DateTime') {
-                throw 'Invalid date format. Provide a date string or DateTime object.'
+                throw 'Invalid date format. Provide a date string or DateTime[] object.'
             }
             $true
         })]
-    [System.Object[]]$dates = @( (@(0, 7) | ForEach-Object { (Get-Date).AddDays($_) }) ),
+    [System.Object[]]$dates = @( (@(-7, 0, 7, 14, 21, 28) | ForEach-Object { 
+        $date = (Get-Date).Date
+        $date.AddHours(12)
+        $date.AddDays($_) }) ),
     [switch]$dontCreateMultiDayEvents,
     [ValidateScript({ if (($_ -and -not $dontCreateMultiDayEvents) -eq $false) {throw "Can't use together with -dontCreateMultiDayEvents"} else {$true} })]
     [switch]$dontSplitOnGapDays,
@@ -281,13 +281,11 @@ $courses = [System.Collections.Generic.List[Course]]::new()
 $rooms = [System.Collections.Generic.List[Room]]::new()
 $legende = [System.Collections.Generic.List[PeriodTableEntry]]::new();
 
-# Check whether the current date is in Daylight Saving Time
-$isDaylightSavingTime = (Get-Date).IsDaylightSavingTime()
 
 $lastImportTimeStamp = $null
 foreach ($date in $dates) {
 
-    Write-Verbose "Getting Data for week of $($date.ToString('yyyy-MM-dd'))"
+    Write-Verbose "Getting Data for week of $([System.String]::Format($culture, "{0:ddd}, {0:d}", $date)))"
 
     $url = "https://$baseUrl/WebUntis/api/public/timetable/weekly/data?elementType=$elementType&elementId=$elementId&date=$($date.ToString('yyyy-MM-dd'))&formatId=14"
 
@@ -295,8 +293,16 @@ foreach ($date in $dates) {
     $object = $response | ConvertFrom-Json -ErrorAction Stop
 
     if ($null -ne $object.data.error) {
-        Write-Warning "::warning::Warning: $($object.data.error.data.messageKey) for value: $($object.data.error.data.messageArgs[0])"
-        break
+        switch ($object.data.error.data.messageKey) {
+            'ERR_TTVIEW_NOTALLOWED_ONDATE' {
+                Write-Warning "::warning::Query for $([System.String]::Format($culture, "{0:ddd}, {0:d}", $date)) not allowed. (Query time frame limited by WebUntis API, maximum defined by admin)"
+                continue
+            }
+            default {
+                Write-Warning "::warning::$($object.data.error.data.messageKey) for value: $($object.data.error.data.messageArgs[0])"
+                continue
+            }
+        }
     }
 
     $class = [PeriodTableEntry]
@@ -354,8 +360,11 @@ foreach ($date in $dates) {
         exit 1
     }
 }
-if (-not $isDaylightSavingTime) { # website seems to display time +1h from the unix time stamp it serves. (shouldn't it be -1 for DST?)
+$lastImportTimeStamp = [datetime]::SpecifyKind($lastImportTimeStamp, [DateTimeKind]::Local)
+if (-not (Get-Date).IsDaylightSavingTime()) { # website seems to display time +1h from the unix time stamp it serves. (shouldn't it be -1 for DST?)
     $lastImportTimeStamp = $lastImportTimeStamp.AddHours(1);
+} else {
+    $lastImportTimeStamp = $lastImportTimeStamp.AddHours(-1);
 }
 
 $periods = $periods | Sort-Object -Property startTime
@@ -509,13 +518,6 @@ if (-not $dontCreateMultiDayEvents) {
     $periods = ($multiDayEvents + $periods)
 }
 
-if ($isDaylightSavingTime) {
-    foreach ($period in $periods) {
-        $period.startTime = $period.startTime.AddHours(-1)
-        $period.endTime = $period.endTime.AddHours(-1)
-    }
-}
-
 $existingPeriods = [System.Collections.Generic.List[PeriodEntry]]::new()
 
 if ($appendToPreviousICSat) {
@@ -630,23 +632,30 @@ VERSION:2.0
 PRODID:-//Chaos_02//WebUntisToIcs//EN
 CALSCALE:GREGORIAN
 METHOD:PUBLISH
+X-WR-TIMEZONE:$($culture.DateTimeFormat.TimeZoneInfo.Id)
+X-MS-OLK-WKHRSTART:073000
+X-MS-OLK-WKHREND:130000
 REFRESH-INTERVAL;VALUE=DURATION:PT3H
 X-PUBLISHED-TTL:PT6H
 X-WR-CALNAME:$(if (-not $splitByCourse) {$class.displayname} else {$class.displayname + " - $($group.Name)"})
 BEGIN:VTIMEZONE
-TZID:Europe/Berlin
-BEGIN:STANDARD
-DTSTART:19710101T030000
-TZOFFSETFROM:+0200
-TZOFFSETTO:+0100
-TZNAME:CET
-END:STANDARD
+TZID:$($culture.DateTimeFormat.TimeZoneInfo.Id)
+LAST-MODIFIED:$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))
+X-LIC-LOCATION:$($culture.DateTimeFormat.TimeZoneInfo.Id)
 BEGIN:DAYLIGHT
-DTSTART:19710101T020000
+DTSTART:19810329T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
 TZOFFSETFROM:+0100
 TZOFFSETTO:+0200
-TZNAME:CEST
+TZNAME:$($culture.DateTimeFormat.DaylightName)
 END:DAYLIGHT
+BEGIN:STANDARD
+DTSTART:19961027T030000
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+TZNAME:$($culture.DateTimeFormat.StandardName)
+END:STANDARD
 END:VTIMEZONE
 $(($IcsEntries -join "`n"))
 END:VCALENDAR
@@ -700,12 +709,14 @@ class IcsEvent {
     IcsEvent([PeriodEntry]$period) {
         $this.preExist = $period.preExist
         $this.UID = $period.id
+        $adjustedStartTime = if ((Get-Date).IsDaylightSavingTime()) { $period.startTime.AddHours(-1) } else { $period.startTime }
+        $adjustedEndTime = if ((Get-Date).IsDaylightSavingTime()) { $period.endTime.AddHours(-1) } else { $period.endTime }
         if ($period.lessonCode -ne 'SUMMARY') {
-            $this.startTime = ';TZID=Europe/Berlin:' + $period.startTime.ToString('yyyyMMddTHHmmss')
-            $this.endTime = ';TZID=Europe/Berlin:' + $period.endTime.ToString('yyyyMMddTHHmmss')
+            $this.startTime = ';TZID=Europe/Berlin:' + $adjustedStartTime.ToString('yyyyMMddTHHmmss')
+            $this.endTime = ';TZID=Europe/Berlin:' + $adjustedEndTime.ToString('yyyyMMddTHHmmss')
         } else {
-            $this.startTime = ';VALUE=DATE:' + $period.startTime.ToString('yyyyMMdd')
-            $this.endTime = ';VALUE=DATE:' + $period.endTime.AddDays(1).ToString('yyyyMMdd')
+            $this.startTime = ';VALUE=DATE:' + $adjustedStartTime.ToString('yyyyMMdd')
+            $this.endTime = ';VALUE=DATE:' + $adjustedEndTime.AddDays(1).ToString('yyyyMMdd')
         }
         $this.location = $period.room.room.longName
         $this.summary = $period.course.course.longName
@@ -837,6 +848,8 @@ class PeriodEntry {
         } else {
             $this.endTime = $this.date().Add([timespan]::ParseExact($jsonObject.endTime.ToString().PadLeft(4, '0'), 'hhmm', $null))
         }
+        $this.startTime = [datetime]::SpecifyKind($this.startTime, [System.DateTimeKind]::Local)
+        $this.endTime = [datetime]::SpecifyKind($this.endTime, [System.DateTimeKind]::Local)
         $this.room = [RoomEntry]::new(($jsonObject.elements | Where-Object { $_.type -eq 4 } | Get-SingleElement), $rooms)
         $this.course = [CourseEntry]::new(($jsonObject.elements | Where-Object { $_.type -eq 3 } | Get-SingleElement), $courses)
         $this.studentGroup = $jsonObject.studentGroup
