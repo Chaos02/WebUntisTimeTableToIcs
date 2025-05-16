@@ -7,77 +7,92 @@
     It allows specifying a date range for the timetable data.
 
 .PARAMETER baseUrl
-    The base URL of the WebUntis API.
+    The base URL of the WebUntis API. This is required to connect to the WebUntis server.
 
 .PARAMETER elementType
-    The type of element (default is 1; typically returns a timetable).
+    Specifies the type of element to retrieve. Default is 1, which typically corresponds to a timetable.
 
 .PARAMETER elementId
-    The class timetable ID.
+    The unique identifier for the class timetable. This ID is used to fetch the timetable data.
 
 .PARAMETER dates
     An array of dates (either as strings or DateTime objects) for which to retrieve timetable data.
-    The default is the current week and the next three weeks.
-    Maximum range is defined by WebUntis admin afaik.
+    Defaults to the previous, current, and next three weeks. The maximum range is defined by the WebUntis administrator.
 
 .PARAMETER OutputFilePath
-    The file path where the ICS file will be saved. Default is "calendar.ics".
+    The file path where the ICS file will be saved. Must have a .ics extension. Default is "calendar.ics".
 
 .PARAMETER dontCreateMultiDayEvents
-    If set, generating "summary" multi-day events will be skipped.
+    If specified, the script will skip generating "summary" multi-day events.
 
 .PARAMETER dontSplitOnGapDays
-    If set, multi-day events will not be split even if gap days exist between periods.
+    If specified, multi-day events will not be split even if there are gap days between periods.
 
 .PARAMETER overrideSummaries
     A hashtable to override course summaries. The key is the original (short) course name, and the value is the new course name.
 
 .PARAMETER appendToPreviousICSat
     The path to an existing ICS file to which new timetable data should be appended.
-    (The file must have a .ics extension and be a valid ICS file.)
-
-.PARAMETER connectLessons
-    If set, consecutive lessons will be connected/merged if they occur within a specified maximum gap.
+    The file must have a .ics extension and be a valid ICS file.
 
 .PARAMETER connectMaxGapMinutes
-    Maximum gap in minutes between consecutive lessons to connect.
-    Set to -1 to disable connection. Default is 15 minutes.
+    Specifies the maximum gap in minutes between consecutive lessons to connect. Set to -1 to disable connection. Default is 15 minutes.
+
+.PARAMETER dontCreateBreakEntriesForGaps
+    If specified, gaps in consecutive events will not result in a (low-Prio) "Break" entry.
 
 .PARAMETER splitByCourse
-    If set, timetable data will be split into separate ICS files for each course.
+    If specified, timetable data will be split into separate ICS files for each course.
 
 .PARAMETER splitByOverrides
-    If set, timetable data will be split into separate ICS files for each course defined in overrideSummaries and the remaining misc. classes.
+    If specified, timetable data will be split into separate ICS files for each course defined in overrideSummaries and the remaining miscellaneous classes.
+
+.PARAMETER dontSplitHigherPrio
+    If specified, higher-priority lessons will not be moved into the separate ICS file "PRIO".
+
+.PARAMETER groupByPrio
+    If specified, higher-priority lessons will also be grouped into separate ICS files "PRIO($val)". Implies -dontSplitHigherPrio.
+    File names for priorities can be overridden by overrideSummaries with the key "PRIO$val".
+    (Example: -overrideSummaries @{PRIO8 = "MySpecialName"})
+
+.PARAMETER dontRemoveHighPrioFromNormal
+    If specified, higher-priority lessons will not be removed from the normal timetable(s).
+    By default, higher-priority lessons are removed from the normal timetable(s) and placed in a separate ICS file "PRIO($val)".
 
 .PARAMETER outAllFormats
-    If set, outputs the timetable data in all available formats (implies -splitByCourse).
+    If specified, outputs the timetable data in all available formats. Implies -splitByCourse $true and -dontSplitHigherPrio $false.
 
 .PARAMETER culture
-    Culture info used for DST/TZ adjustments and formatting date/time values.
-    Default is the system culture as returned by Get-Culture.
+    Specifies the culture info used for DST/TZ adjustments and formatting date/time values.
+    Defaults to the system culture as returned by Get-Culture.
+
+.PARAMETER TimeZoneID
+    Specifies the time zone ID for the calendar entries in IANA format. Default is 'Europe/Berlin'.
+    Other options include 'Europe/Paris', 'Europe/Rome', 'Europe/Madrid', 'Europe/Brussels', 'Europe/Warsaw', and 'UTC'.
 
 .PARAMETER cookie
-    The cookie value for the WebUntis session.
+    The session cookie value for the WebUntis API. Required for authentication.
 
 .PARAMETER tenantId
-    The tenant ID for the WebUntis session.
-
-.EXAMPLE
-    .\timeTableToIcs.ps1 -baseUrl "your.webuntis.url" -elementType 1 -elementId 12345 -dates "2023-01-01", "2023-01-08" -OutputFilePath "mycalendar.ics" -cookie "your_cookie" -tenantId "your_tenant_id"
+    The tenant ID for the WebUntis session. Required for authentication.
 
 .NOTES
     Author: Chaos_02
-    Date: 2024-09-28
-    Version: 1.5
+    Date: 2025-05-15
+    Version: 1.9.1
+    This script is designed to work with the WebUntis API to generate ICS calendar files from timetable data.
 #>
 
 param (
     [ValidateNotNullOrEmpty()]
     [Alias('URL')]
     [string]$baseUrl,
+
     [int]$elementType = 1,
+
     [Alias('TimeTableID')]
     [int]$elementId,
+
     [Parameter(Mandatory = $false)]
     [Alias('DateRange')]
     [ValidateScript({
@@ -90,18 +105,18 @@ param (
             }
             $true
         })]
-    [System.Object[]]$dates = @( (@(-7, 0, 7, 14, 21, 28) | ForEach-Object { 
-        $date = (Get-Date).Date
-        $date.AddHours(12)
-        $date.AddDays($_) }) ),
+    [System.Object[]]$dates = (@(-7, 0, 7, 14, 21, 28) | ForEach-Object { return (Get-Date).Date.AddHours(12).AddDays($_) }),
+
     [switch]$dontCreateMultiDayEvents,
+
     [ValidateScript({ if (($_ -and -not $dontCreateMultiDayEvents) -eq $false) {throw "Can't use together with -dontCreateMultiDayEvents"} else {$true} })]
     [switch]$dontSplitOnGapDays,
+
     [Parameter(
         Position = 0,
         ValueFromPipeline = $true,
         ValueFromPipelineByPropertyName = $true,
-        HelpMessage = 'Output file path.'
+        HelpMessage = 'Specifies the output file path for the generated ICS file. Must have a .ics extension.'
     )]
     [Alias('PSPath')]
     [ValidateNotNullOrEmpty()]
@@ -114,6 +129,7 @@ param (
         }
     })]
     [System.IO.FileInfo]$OutputFilePath = [System.IO.FileInfo]"calendar.ics",
+
     [ValidateNotNullOrEmpty()]
     [ValidateScript({
         if (-not ($_ -is [hashtable])) {
@@ -135,21 +151,19 @@ param (
         HelpMessage = 'A hashtable to override the summaries of the courses. The key is the original course (short) name, the value is the new course name.'
     )]
     [hashtable]$overrideSummaries,
+
     [Parameter(
         ValueFromPipelineByPropertyName = $true,
-        HelpMessage = 'Path to an existing ICS file to which the new timetable data should be appended.'
+        HelpMessage = 'Path to an existing ICS file to which the new timetable data should be appended. Must be a valid ICS file.'
     )]
     [ValidateNotNull()]
     [ValidateScript({
-        # Ensure the file exists.
         if (-not $_.Exists) {
             throw "The file '$($_.FullName)' does not exist."
         }
-        # Check that the file has a .ics extension (case-insensitive).
         if ($_.Extension.ToLower() -ne ".ics") {
             throw "The file '$($_.FullName)' does not have a .ics extension."
         }
-        # Read the file content and verify it looks like a valid ICS file.
         $content = Get-Content -Path $_.FullName -Raw
         if ($content -notmatch '^BEGIN:VCALENDAR' -or $content -notmatch 'END:VCALENDAR\s*$') {
             throw "The file '$($_.FullName)' does not appear to be a valid ICS file."
@@ -157,29 +171,62 @@ param (
         $true
     })]
     [System.IO.FileInfo]$appendToPreviousICSat,
-    [Parameter(HelpMessage = 'Maximum gap in minutes to connect lessons set to -1 to disable connection')]
+
+    [Parameter(HelpMessage = 'Specifies the maximum gap in minutes between consecutive lessons to connect. Set to -1 to disable connection. Default is 15 minutes.')]
     [ValidateScript({ if ($_ -ge -1) { $true } else { throw 'The value must be a non-negative integer.' } })]
     [int]$connectMaxGapMinutes = 15,
+
+    [Parameter(HelpMessage = 'If set, gaps in consecutive events will result in a less prioritized "Break" entry.')]
+    [switch]$dontCreateBreakEntriesForGaps,
+
     [Parameter(
         ParameterSetName = 'OutputControl',
         HelpMessage = 'Split the timetable data into separate ICS files for each course.'
-        #Mandatory = {$splitByOverrides}
     )]
     [switch]$splitByCourse,
+
     [Parameter(
         ParameterSetName = 'OutputControl',
         HelpMessage = 'Split only by courses defined in overrideSummaries and misc. classes.'
     )]
     [ValidateScript({if ($_ -and -not $overrideSummaries) {throw 'The parameter -splitByOverrides requires the parameter overrideSummaries to be set.'} else {$true}})]
     [switch]$splitByOverrides,
-    [Parameter(ParameterSetName = 'OutputControl')]
+
+    [Parameter(
+        ParameterSetName = 'OutputControl',
+        HelpMessage = 'If set, higher-priority lessons will not be moved at least into the separate ICS file "PRIO".'
+    )]
+    [switch]$dontSplitHigherPrio,
+
+    [Parameter(
+        ParameterSetName = 'OutputControl',
+        HelpMessage = 'If set, higher-priority lessons will not be removed from the normal timetable(s).'
+    )]
+    [switch]$dontRemoveHighPrioFromNormal,
+
+    [Parameter(
+        ParameterSetName = 'OutputControl',
+        HelpMessage = 'If set, higher-priority lessons will also be grouped into separate ICS file(s) "PRIO($val)".'
+    )]
+    [ValidateScript({if ($_ -and $dontSplitHigherPrio) {throw 'The parameter -groupByPrio requires the parameter -dontSplitHigherPrio to be NOT set.'} else {$true}})]
+    [switch]$groupByPrio,
+
+    [Parameter(
+        ParameterSetName = 'OutputControl',
+        HelpMessage = 'If set, outputs the timetable data in all available formats.'
+    )]
     [switch]$outAllFormats,
-    [Parameter(HelpMessage = 'Controls DST/TZ info (and how DateTimes are formatted)')]
+
+    [Parameter(HelpMessage = 'Specifies the culture info used for DST/TZ adjustments and formatting date/time values. Default is the system culture.')]
     [ArgumentCompleter({
         param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
         # Retrieve all available cultures (you can choose to restrict to a subset if desired)
         $allCultures = [System.Globalization.CultureInfo]::GetCultures([System.Globalization.CultureTypes]::AllCultures)
-        # Filter cultures by matching the user’s typed text (case-insensitive)
+
+        if ($wordToComplete -eq '') {
+            # If no input is provided, return all culture names - seems to be ignored because it cycles through files
+            return $allCultures | ForEach-Object { $_.Name }
+        }
         $allCultures |
             Where-Object { $_.Name -like "*$wordToComplete*" } |
             ForEach-Object {
@@ -197,14 +244,36 @@ param (
             }
     })]
     [System.Globalization.CultureInfo]$culture = (Get-Culture),
+
+    [Parameter(HelpMessage = 'Specifies the time zone ID for the calendar entries.')]
     [ValidateNotNullOrEmpty()]
+    [ValidateSet( 
+        'Europe/Berlin',
+        'Europe/Paris',
+        'Europe/Rome',
+        'Europe/Madrid',
+        'Europe/Brussels',
+        'Europe/Warsaw',
+        'UTC'
+    )]
+    [string]$TimeZoneID = 'Europe/Berlin',
+
+    [ValidateNotNullOrEmpty()]
+    [Parameter(HelpMessage = 'Specifies the cookie value for the WebUntis session.')]
     [string]$cookie,
+
     [ValidateNotNullOrEmpty()]
+    [Parameter(HelpMessage = 'Specifies the tenant ID for the WebUntis session.')]
     [string]$tenantId
 )
 
+if ($groupByPrio) {
+    $dontSplitHigherPrio = $false
+}
+
 if ($outAllFormats) {
     $splitByCourse = $true
+    $dontSplitHigherPrio = $false
 }
 if ($appendToPreviousICSat) {
     if (-not (Test-Path $appendToPreviousICSat)) {
@@ -285,7 +354,8 @@ $legende = [System.Collections.Generic.List[PeriodTableEntry]]::new();
 $lastImportTimeStamp = $null
 foreach ($date in $dates) {
 
-    Write-Verbose "Getting Data for week of $([System.String]::Format($culture, "{0:ddd}, {0:d}", $date)))"
+    $week = Get-WeekStartDate $date
+    Write-Host "Getting Data for week of $([System.String]::Format($culture, "{0:d}", $week.Date)) - $([System.String]::Format($culture, "{0:d}", $week.Date.addDays(7)))"
 
     $url = "https://$baseUrl/WebUntis/api/public/timetable/weekly/data?elementType=$elementType&elementId=$elementId&date=$($date.ToString('yyyy-MM-dd'))&formatId=14"
 
@@ -293,19 +363,22 @@ foreach ($date in $dates) {
     $object = $response | ConvertFrom-Json -ErrorAction Stop
 
     if ($null -ne $object.data.error) {
+        $continue = $false
         switch ($object.data.error.data.messageKey) {
             'ERR_TTVIEW_NOTALLOWED_ONDATE' {
                 Write-Warning "::warning::Query for $([System.String]::Format($culture, "{0:ddd}, {0:d}", $date)) not allowed. (Query time frame limited by WebUntis API, maximum defined by admin)"
-                continue
+                $continue = $true # PS5 does not support "continue 2", "continue" counts for the switch statement then
+                break;
             }
             default {
                 Write-Warning "::warning::$($object.data.error.data.messageKey) for value: $($object.data.error.data.messageArgs[0])"
-                continue
+                $continue = $true
+                break;
             }
         }
+        if ($continue) { continue }
     }
 
-    $class = [PeriodTableEntry]
 
     try {
         $object.data.result.data.elements | ForEach-Object {
@@ -367,52 +440,67 @@ if (-not (Get-Date).IsDaylightSavingTime()) { # website seems to display time +1
     $lastImportTimeStamp = $lastImportTimeStamp.AddHours(-1);
 }
 
-$periods = $periods | Sort-Object -Property startTime
+$periods.sort({ param($a, $b) $a.startTime.CompareTo($b.startTime) })
 
-if ($periods.Length -eq 0 -or $null -eq $periods) {
+if ($periods.Count -eq 0 -or $null -eq $periods) {
     Write-Host "::warning::No Periods in the specified time frame"
     exit 0
 }
 
 if ($connectMaxGapMinutes -ne -1 -and $null -ne $connectMaxGapMinutes) {
-    for ($i = 0; $i -lt $periods.Count; $i++) {
-        if ($null -eq $periods[$i]) {
-            continue
-        }
+    $breakEntries = [System.Collections.Generic.List[PeriodEntry]]::new()
+    for ($i = 1; $i -lt $periods.Count; $i++) {
         $period = $periods[$i]
-        $lperiod = $periods[$i+1]
-        if (($lperiod.startTime - $period.endTime).TotalMinutes -lt 0) {
+        $nextperiod = $periods[$i+1]
+        if (($nextperiod.startTime - $period.endTime).TotalMinutes -lt 0) {
             continue # skip overlapping periods
-        }
-        if (($lperiod.startTime - $period.endTime).TotalMinutes -le $connectMaxGapMinutes -and `
-            $lperiod.course.course.id -eq $period.course.course.id -and `
-            $lperiod.room.room.id -eq $period.room.room.id -and `
-            $lperiod.cellState -eq $period.cellState -and `
-            $lperiod.substText -eq $period.substText
-        ) {
-            $periods[$i].endTime = $lperiod.EndTime
-            $periods[$i+1] = $null
-            $i++ # skip null entry
-            continue
-        }
-        if ($i -eq 0) {
-            continue
         }
         $i2 = $i - 1
         while ($null -eq $periods[$i2]) {
             $i2--
         }
-        if (($periods[$i2].endTime - $period.startTime).TotalMinutes -le $connectMaxGapMinutes -and `
-            $period.course.course.id -eq $periods[$i2].course.course.id -and `
-            $period.room.room.id -eq $periods[$i2].room.room.id -and `
-            $period.cellState -eq $periods[$i2].cellState -and `
-            $period.substText -eq $periods[$i2].substText
+        $prevperiod = $periods[$i2]
+
+        if (($period.startTime - $prevperiod.endTime).TotalMinutes -le $connectMaxGapMinutes -and `
+            $period.course.course.id -eq $prevperiod.course.course.id -and `
+            $period.room.room.id -eq $prevperiod.room.room.id -and `
+            $period.cellState -eq $prevperiod.cellState -and `
+            $period.substText -eq $prevperiod.substText
         ) {
-            $periods[$i2].endTime = $periods[$i].endTime
+            if (-not $dontCreateBreakEntriesForGaps -and ($period.startTime - $prevperiod.endTime).TotalMinutes -gt 0) {
+                $breakJson = [PSCustomObject]@{
+                    id         = Get-Random -Minimum 100000 -Maximum $([int]::MaxValue)
+                    date       = $period.startTime.Date.ToString('yyyyMMdd')
+                    startTime  = $period.endTime.ToString('hhmm')
+                    endTime    = $nextperiod.startTime.ToString('hhmm')
+                    elements   = @(@{
+                        type = 3
+                        id = 0
+                    })
+                    substText  = "$(($nextperiod.startTime - $period.endTime).TotalMinutes)m break in $($period.course.course.name)" # Entry Description
+                    lessonCode = 'BREAK'
+                    cellstate  = 'ADDITIONAL'
+                    priority   = 1
+                }
+                $breakEntry = [PeriodEntry]::new(
+                    $breakJson,
+                    $rooms, 
+                    [Course]::new([PeriodTableEntry]::new(@{
+                        type = 3
+                        id = 0
+                        longName = "$(($nextperiod.startTime - $period.endTime).TotalMinutes)m break"
+                    }))
+                )
+                $breakEntries.add($breakEntry)
+            }
+       
+            $prevperiod.endTime = $period.endTime
             $periods[$i] = $null
         }
     }
-    $periods = $periods | Where-Object { $_ -ne $null }
+    $periods.RemoveAll({ param($a) $a -eq $null })
+    $periods.AddRange($breakEntries)
+    $periods.Sort({ param($a,$b) $a.startTime.CompareTo($b.startTime) -or $a.endTime.CompareTo($b.endTime) })
 }
 
 if (-not $dontCreateMultiDayEvents) {
@@ -429,7 +517,7 @@ if (-not $dontCreateMultiDayEvents) {
                     longName = "DUMMY"
                 }
             }
-            substText  = "Dummy because No events in timeframe $($dates[0]) - $($dates[$dates.Count - 1])" # next is not guaranteed
+            substText  = "Dummy because No events in timeframe $([System.String]::Format($culture, "{0:d}", $week.Date)) - $([System.String]::Format($culture, "{0:d}", $week.Date.addDays(7)))"
             lessonCode = 'SUMMARY'
             cellstate  = 'CANCEL'
         }
@@ -515,7 +603,10 @@ if (-not $dontCreateMultiDayEvents) {
         }
     }
 
-    $periods = ($multiDayEvents + $periods)
+    $finalList = [System.Collections.Generic.List[PeriodEntry]]::new()
+    $finalList.AddRange($multiDayEvents)
+    $finalList.AddRange($periods)
+    $periods = $finalList
 }
 
 $existingPeriods = [System.Collections.Generic.List[PeriodEntry]]::new()
@@ -527,7 +618,7 @@ if ($appendToPreviousICSat) {
     $existingEntries = [regex]::Matches($content, $veventPattern) | ForEach-Object { $_.Value }
     
     foreach ($entry in $existingEntries) {
-        $previousIcsEvent = [IcsEvent]::new($entry)
+        $previousIcsEvent = [IcsEvent]::new($entry, $TimeZoneID)
         if ($previousIcsEvent.Category -ne 'SUMMARY') {
             $previousPeriod = [PeriodEntry]::new($previousIcsEvent, $rooms, $courses)
             if ($periods.where({ $_.ID -eq $previousPeriod.ID }).Count -lt 1) {
@@ -538,24 +629,29 @@ if ($appendToPreviousICSat) {
         } else { Write-Verbose "Skipping SUMMARY entry $($previousIcsEvent.StartTime) - $($previousIcsEvent.EndTime)" }
     }
     if ($periods.count -ne 0 -and $null -ne $periods) {
-        $periods = ($existingPeriods + $periods)
-    } else {
-        $periods = $existingPeriods
+        $existingPeriods.AddRange($periods)
     }
+    $periods = $existingPeriods
 }
 
+$highPrioPeriods = $periods.Where({ $_.Priority -gt 5 })
+if (-not $dontRemoveHighPrioFromNormal) {
+    $periods.RemoveAll({ param($a) $highPrioPeriods.Contains($a) })
+}
+
+$tmpPeriods = $periods
+
 if ($splitByCourse -and -not $splitByOverrides) {
-    $tmpPeriods = $periods
     $periods = $periods | Group-Object -Property { if (-not [string]::IsNullOrEmpty($_.course.course.name)) {
             $_.course.course.name 
         } else { 
             $_.lessonCode
-        } }
+        } 
+    }
     if ($outAllFormats) {
         $periods += ($tmpPeriods | Group-Object -Property { 'All' })
     }
 } elseif ($splitByOverrides) {
-    $tmpPeriods = $periods
     $periods = $periods | Group-Object -Property { if (-not [string]::IsNullOrEmpty($_.course.course.name)) { 
             Write-Verbose "Checking for override: $($_.course.course.name) $($overrideSummaries.Keys -contains $_.course.course.name)"
             if ($overrideSummaries.Keys -contains $_.course.course.name) {
@@ -573,13 +669,58 @@ if ($splitByCourse -and -not $splitByOverrides) {
     $periods = $periods | Group-Object -Property { 'All' }
 }
 
+if (-not $dontSplitHigherPrio -or $outAllFormats) {
+
+    $prioJson = [PSCustomObject]@{
+        id         = 0
+        date       = ([datetime]"2020-01-01T00:00:00Z").Date.ToString('yyyyMMdd')
+        startTime  = ([datetime]"2020-01-01T00:00:00Z").ToString('hhmm')
+        endTime    = ([datetime]"2020-01-01T00:00:00Z").AddMinutes(1)
+        course = @{
+            course = @{
+                longName = "DUMMY"
+            }
+        }
+        substText  = "Dummy because No events in timeframe $([System.String]::Format($culture, "{0:d}", $week.Date)) - $([System.String]::Format($culture, "{0:d}", $week.Date.addDays(7)))"
+        lessonCode = 'PRIO'
+        cellstate  = 'CANCEL'
+        priority   = 5
+    }
+    $newPrio = [PeriodEntry]::new($prioJson, $rooms, $courses)
+
+    $highPrioPeriods.Insert(0, $newPrio)
+
+    $highPrioGroups = $highPrioPeriods | Group-Object -Property { "PRIO" }
+    $highPrioGroups = @($highPrioGroups) # so I can add the new groups
+
+    $highPrioPeriods.RemoveAt(0) # remove the dummy entry
+
+    if ($groupByPrio -or $outAllFormats) {
+        # clone into PRIO group
+        $highPrioGroups += ($highPrioPeriods | Group-Object -Property {
+            $prioStr = "PRIO$($_.Priority)"
+            
+            Write-Verbose "Checking for override: $prioStr $($overrideSummaries.Keys -contains $prioStr)"
+            if ($overrideSummaries.Keys -contains $prioStr) {
+                ($overrideSummaries[$prioStr] -split ',')[0]
+            } else {
+                $prioStr
+            }
+        })
+    }
+
+    foreach ($prioGroup in $highPrioGroups) {
+        $periods += $prioGroup
+    }
+}
+
 foreach ($group in $periods) {
     
     $calendarEntries = [System.Collections.Generic.List[IcsEvent]]::new()
 
     # Iterate over each period and create calendar entries
     foreach ($period in $group.Group) {
-        $calendarEntries.Add([IcsEvent]::new($period))
+        $calendarEntries.Add([IcsEvent]::new($period, $TimeZoneID))
     }
 
     # Get all properties except StartTime and EndTime
@@ -632,16 +773,16 @@ VERSION:2.0
 PRODID:-//Chaos_02//WebUntisToIcs//EN
 CALSCALE:GREGORIAN
 METHOD:PUBLISH
-X-WR-TIMEZONE:$($culture.DateTimeFormat.TimeZoneInfo.Id)
+X-WR-TIMEZONE:$TimeZoneID
 X-MS-OLK-WKHRSTART:073000
 X-MS-OLK-WKHREND:130000
 REFRESH-INTERVAL;VALUE=DURATION:PT3H
 X-PUBLISHED-TTL:PT6H
 X-WR-CALNAME:$(if (-not $splitByCourse) {$class.displayname} else {$class.displayname + " - $($group.Name)"})
 BEGIN:VTIMEZONE
-TZID:$($culture.DateTimeFormat.TimeZoneInfo.Id)
+TZID:$TimeZoneID
 LAST-MODIFIED:$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))
-X-LIC-LOCATION:$($culture.DateTimeFormat.TimeZoneInfo.Id)
+X-LIC-LOCATION:$TimeZoneID
 BEGIN:DAYLIGHT
 DTSTART:19810329T020000
 RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
@@ -706,14 +847,14 @@ class IcsEvent {
     [bool]$Transparent
     [bool]$preExist = $false
 
-    IcsEvent([PeriodEntry]$period) {
+    IcsEvent([PeriodEntry]$period, [string]$TimeZoneID) {
         $this.preExist = $period.preExist
         $this.UID = $period.id
         $adjustedStartTime = if ((Get-Date).IsDaylightSavingTime()) { $period.startTime.AddHours(-1) } else { $period.startTime }
         $adjustedEndTime = if ((Get-Date).IsDaylightSavingTime()) { $period.endTime.AddHours(-1) } else { $period.endTime }
         if ($period.lessonCode -ne 'SUMMARY') {
-            $this.startTime = ';TZID=Europe/Berlin:' + $adjustedStartTime.ToString('yyyyMMddTHHmmss')
-            $this.endTime = ';TZID=Europe/Berlin:' + $adjustedEndTime.ToString('yyyyMMddTHHmmss')
+            $this.startTime = ";TZID=$($TimeZoneID):" + $adjustedStartTime.ToString('yyyyMMddTHHmmss')
+            $this.endTime = ";TZID=$($TimeZoneID):" + $adjustedEndTime.ToString('yyyyMMddTHHmmss')
         } else {
             $this.startTime = ';VALUE=DATE:' + $adjustedStartTime.ToString('yyyyMMdd')
             $this.endTime = ';VALUE=DATE:' + $adjustedEndTime.AddDays(1).ToString('yyyyMMdd')
@@ -728,6 +869,11 @@ class IcsEvent {
             'STANDARD' { 'CONFIRMED' }
             'ADDITIONAL' { 'TENTATIVE' }
             'CANCEL' { 'CANCELLED' }
+            'SHIFT' { 'CONFIRMED' }
+            'ROOMSUBSTITUTION' { 'CONFIRMED' }
+            'SUBSTITUTION' { 'CONFIRMED' }
+            'BREAK' { 'TENTATIVE' }
+            'SUMMARY' { 'CONFIRMED' }
             'CONFIRMED' { $_ }
             'TENTATIVE' { $_ }
             'CANCELLED' { $_ }
@@ -904,9 +1050,7 @@ class RoomEntry {
 
     RoomEntry([PSCustomObject]$jsonObject, [System.Collections.Generic.List[Room]]$rooms) {
         Write-Debug "RoomEntry: $($jsonObject)"
-        $problemObject = $jsonObject 
-        $tmp = $rooms | Where-Object { $_.id -eq $jsonObject.id } | Get-SingleElement
-        $this.room = $tmp
+        $this.room = $rooms | Where-Object { $_.id -eq $jsonObject.id } | Get-SingleElement
         $this.orgId = $jsonObject.orgId
         $this.missing = $jsonObject.missing
         $this.state = $jsonObject.state

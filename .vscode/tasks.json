@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Install Git Hooks",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "try { Copy-Item -Path .hooks\\* -Destination .git\\hooks -Force -ErrorAction Stop; Write-Host \"Git hooks installed successfully.\" } catch { Write-Error \"Failed to install Git hooks: $_\" }"
+            ],
+            "problemMatcher": [],
+            "runOptions": {
+                "runOn": "folderOpen"
+            },
+            "detail": "This task installs Git hooks automatically when the folder is opened.",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            }
+        }
+    ]
+}
