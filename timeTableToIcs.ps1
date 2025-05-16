@@ -79,7 +79,7 @@
 .NOTES
     Author: Chaos_02
     Date: 2025-05-15
-    Version: 1.9.1
+    Version: 1.9.1.1
     This script is designed to work with the WebUntis API to generate ICS calendar files from timetable data.
 #>
 
