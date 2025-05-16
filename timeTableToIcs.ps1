@@ -79,7 +79,7 @@
 .NOTES
     Author: Chaos_02
     Date: 2025-05-15
-    Version: 1.9.1.1
+    Version: 1.9.2
     This script is designed to work with the WebUntis API to generate ICS calendar files from timetable data.
 #>
 
@@ -618,7 +618,7 @@ if ($appendToPreviousICSat) {
     $existingEntries = [regex]::Matches($content, $veventPattern) | ForEach-Object { $_.Value }
     
     foreach ($entry in $existingEntries) {
-        $previousIcsEvent = [IcsEvent]::new($entry, $TimeZoneID)
+        $previousIcsEvent = [IcsEvent]::new($entry)
         if ($previousIcsEvent.Category -ne 'SUMMARY') {
             $previousPeriod = [PeriodEntry]::new($previousIcsEvent, $rooms, $courses)
             if ($periods.where({ $_.ID -eq $previousPeriod.ID }).Count -lt 1) {
