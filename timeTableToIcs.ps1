@@ -79,7 +79,7 @@
 .NOTES
     Author: Chaos_02
     Date: 2025-05-15
-    Version: 1.9.2
+    Version: 1.9.3
     This script is designed to work with the WebUntis API to generate ICS calendar files from timetable data.
 #>
 
@@ -477,7 +477,7 @@ if ($connectMaxGapMinutes -ne -1 -and $null -ne $connectMaxGapMinutes) {
                         type = 3
                         id = 0
                     })
-                    substText  = "$(($nextperiod.startTime - $period.endTime).TotalMinutes)m break in $($period.course.course.name)" # Entry Description
+                    substText  = "$(($period.startTime - $prevperiod.endTime).TotalMinutes)m break in $($period.course.course.name)" # Entry Description
                     lessonCode = 'BREAK'
                     cellstate  = 'ADDITIONAL'
                     priority   = 1
@@ -488,9 +488,38 @@ if ($connectMaxGapMinutes -ne -1 -and $null -ne $connectMaxGapMinutes) {
                     [Course]::new([PeriodTableEntry]::new(@{
                         type = 3
                         id = 0
-                        longName = "$(($nextperiod.startTime - $period.endTime).TotalMinutes)m break"
+                        longName = "$(($period.startTime - $prevperiod.endTime).TotalMinutes)m break"
                     }))
                 )
+                Write-Host "Adding break entry: $($breakEntry.ToString())"
+                if ([string]::IsNullOrWhiteSpace($breakEntry.course.course.longName)) {
+                    Write-Host "::warning::Break entry has no course name set? $($breakEntry.ToString()), $($breakEntry.course.ToString()), $($breakEntry.course.course.ToString())" 
+                    # this should not happen but when it happens it seems to produce many break entries like this:
+                    # BEGIN:VEVENT
+                    # UID:738228560
+                    # DTSTART;TZID=Europe/Berlin:20250606T100000
+                    # DTEND;TZID=Europe/Berlin:20250606T100000
+                    # LOCATION:
+                    # SUMMARY:
+                    # DESCRIPTION:0m break in LBT4
+                    # STATUS:TENTATIVE
+                    # CATEGORIES:BREAK
+                    # PRIORITY:9
+                    # TRANSP:TRANSPARENT
+                    # END:VEVENT
+                    # BEGIN:VEVENT
+                    # UID:622817971
+                    # DTSTART;TZID=Europe/Berlin:20250604T100000
+                    # DTEND;TZID=Europe/Berlin:20250604T100000
+                    # LOCATION:
+                    # SUMMARY:
+                    # DESCRIPTION:0m break in LBT3
+                    # STATUS:TENTATIVE
+                    # CATEGORIES:BREAK
+                    # PRIORITY:9
+                    # TRANSP:TRANSPARENT
+                    # END:VEVENT
+                }
                 $breakEntries.add($breakEntry)
             }
        
@@ -1105,6 +1134,10 @@ class CourseEntry {
         $this.missing = $null
         $this.state = $null
     }
+
+    [string] ToString() {
+        return "Course: $($this.course.name), ID: $($this.course.id), Org ID: $($this.orgId), Missing: $($this.missing), State: $($this.state)"
+    }
 }
 
 class Course {
@@ -1125,6 +1158,10 @@ class Course {
         $this.displayname = $legende.displayname
         $this.alternatename = $legende.alternatename
         $this.courseCapacity = $legende.courseCapacity
+    }
+
+    [string] ToString() {
+        return "Course: $($this.name), ID: $($this.id), Long Name: $($this.longName), Display Name: $($this.displayname), Alternate Name: $($this.alternatename), Course Capacity: $($this.courseCapacity)"
     }
 }
 
