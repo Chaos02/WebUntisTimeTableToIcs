@@ -79,7 +79,7 @@
 .NOTES
     Author: Chaos_02
     Date: 2025-05-15
-    Version: 1.9.4
+    Version: 1.9.5
     This script is designed to work with the WebUntis API to generate ICS calendar files from timetable data.
 #>
 
@@ -491,47 +491,7 @@ if ($connectMaxGapMinutes -ne -1 -and $null -ne $connectMaxGapMinutes) {
                         longName = "$(($period.startTime - $prevperiod.endTime).TotalMinutes)m break"
                     }))
                 )
-                Write-Host "Adding break entry: $($breakEntry.ToString())"
-                if ([string]::IsNullOrWhiteSpace($breakEntry.course.course.longName)) {
-                    Write-Host "::warning::Break entry has no course name set? $($breakEntry.ToString()), $($breakEntry.course.ToString()), $($breakEntry.course.course.ToString())" 
-                    # this should not happen but when it happens it seems to produce many break entries like this:
-                    # BEGIN:VEVENT
-                    # UID:1367233
-                    # DTSTART;TZID=Europe/Berlin:20250411T110000
-                    # DTEND;TZID=Europe/Berlin:20250411T114500
-                    # LOCATION:116 Klz
-                    # SUMMARY:Wi, Wirtschafts- und Sozialkunde
-                    # DESCRIPTION:
-                    # STATUS:CONFIRMED
-                    # CATEGORIES:LESSON
-                    # PRIORITY:5
-                    # TRANSP:OPAQUE
-                    # END:VEVENT
-                    # BEGIN:VEVENT ---> this entry is present like 20 times with differend UIDs
-                    # UID:72828535
-                    # DTSTART;TZID=Europe/Berlin:20250516T100000
-                    # DTEND;TZID=Europe/Berlin:20250516T100000
-                    # LOCATION:
-                    # SUMMARY:
-                    # DESCRIPTION:0m break in LBT4
-                    # STATUS:TENTATIVE
-                    # CATEGORIES:BREAK
-                    # PRIORITY:9
-                    # TRANSP:TRANSPARENT
-                    # END:VEVENT
-                    # BEGIN:VEVENT
-                    # UID:1367242
-                    # DTSTART;TZID=Europe/Berlin:20250516T110000
-                    # DTEND;TZID=Europe/Berlin:20250516T114500
-                    # LOCATION:116 Klz
-                    # SUMMARY:Wi, Wirtschafts- und Sozialkunde
-                    # DESCRIPTION:
-                    # STATUS:CONFIRMED
-                    # CATEGORIES:LESSON
-                    # PRIORITY:5
-                    # TRANSP:OPAQUE
-                    # END:VEVENT
-                }
+                Write-Verbose "Adding break entry: $($breakEntry.ToString())"
                 $breakEntries.add($breakEntry)
             }
        
@@ -660,7 +620,7 @@ if ($appendToPreviousICSat) {
     
     foreach ($entry in $existingEntries) {
         $previousIcsEvent = [IcsEvent]::new($entry)
-        if ($previousIcsEvent.Category -ne 'SUMMARY') {
+        if ($previousIcsEvent.Category -ne 'SUMMARY' -and $previousIcsEvent.Category -ne 'BREAK') {
             $previousPeriod = [PeriodEntry]::new($previousIcsEvent, $rooms, $courses)
             if ($periods.where({ $_.ID -eq $previousPeriod.ID }).Count -lt 1) {
                 $existingPeriods.Add($previousPeriod)
