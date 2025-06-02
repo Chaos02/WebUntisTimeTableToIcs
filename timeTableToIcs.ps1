@@ -79,7 +79,7 @@
 .NOTES
     Author: Chaos_02
     Date: 2025-05-15
-    Version: 1.9.3
+    Version: 1.9.4
     This script is designed to work with the WebUntis API to generate ICS calendar files from timetable data.
 #>
 
@@ -496,9 +496,21 @@ if ($connectMaxGapMinutes -ne -1 -and $null -ne $connectMaxGapMinutes) {
                     Write-Host "::warning::Break entry has no course name set? $($breakEntry.ToString()), $($breakEntry.course.ToString()), $($breakEntry.course.course.ToString())" 
                     # this should not happen but when it happens it seems to produce many break entries like this:
                     # BEGIN:VEVENT
-                    # UID:738228560
-                    # DTSTART;TZID=Europe/Berlin:20250606T100000
-                    # DTEND;TZID=Europe/Berlin:20250606T100000
+                    # UID:1367233
+                    # DTSTART;TZID=Europe/Berlin:20250411T110000
+                    # DTEND;TZID=Europe/Berlin:20250411T114500
+                    # LOCATION:116 Klz
+                    # SUMMARY:Wi, Wirtschafts- und Sozialkunde
+                    # DESCRIPTION:
+                    # STATUS:CONFIRMED
+                    # CATEGORIES:LESSON
+                    # PRIORITY:5
+                    # TRANSP:OPAQUE
+                    # END:VEVENT
+                    # BEGIN:VEVENT ---> this entry is present like 20 times with differend UIDs
+                    # UID:72828535
+                    # DTSTART;TZID=Europe/Berlin:20250516T100000
+                    # DTEND;TZID=Europe/Berlin:20250516T100000
                     # LOCATION:
                     # SUMMARY:
                     # DESCRIPTION:0m break in LBT4
@@ -508,16 +520,16 @@ if ($connectMaxGapMinutes -ne -1 -and $null -ne $connectMaxGapMinutes) {
                     # TRANSP:TRANSPARENT
                     # END:VEVENT
                     # BEGIN:VEVENT
-                    # UID:622817971
-                    # DTSTART;TZID=Europe/Berlin:20250604T100000
-                    # DTEND;TZID=Europe/Berlin:20250604T100000
-                    # LOCATION:
-                    # SUMMARY:
-                    # DESCRIPTION:0m break in LBT3
-                    # STATUS:TENTATIVE
-                    # CATEGORIES:BREAK
-                    # PRIORITY:9
-                    # TRANSP:TRANSPARENT
+                    # UID:1367242
+                    # DTSTART;TZID=Europe/Berlin:20250516T110000
+                    # DTEND;TZID=Europe/Berlin:20250516T114500
+                    # LOCATION:116 Klz
+                    # SUMMARY:Wi, Wirtschafts- und Sozialkunde
+                    # DESCRIPTION:
+                    # STATUS:CONFIRMED
+                    # CATEGORIES:LESSON
+                    # PRIORITY:5
+                    # TRANSP:OPAQUE
                     # END:VEVENT
                 }
                 $breakEntries.add($breakEntry)
